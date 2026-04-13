@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { analyzeArabicText, translateUiLabels } from './services/geminiService';
-import { Search, BookOpen, Loader2, Languages, Info, AlertCircle, History, Trash2, X, Clock, Menu } from 'lucide-react';
+import { getAccessToken, QuotaExceededError } from './lib/auth-utils';
+import { Search, BookOpen, Loader2, Languages, Info, AlertCircle, History, Trash2, X, Clock, Menu, LogIn, User } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -26,6 +27,9 @@ export default function App() {
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [dynamicLabels, setDynamicLabels] = useState<Record<string, any>>({});
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [accessToken, setAccessToken] = useState<string | null>(localStorage.getItem('gemini_access_token'));
+  const [showQuotaUpgrade, setShowQuotaUpgrade] = useState(false);
 
   const worldLanguages = [
     "Urdu", "Arabic", "English", "Persian", "Turkish", "Hindi", "Bengali", "Punjabi", "Pashto", "Sindhi",
@@ -55,6 +59,19 @@ export default function App() {
 
   // Dynamic UI Translation
   useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     const translate = async () => {
       if (uiLabels[uiLanguage]) return; // Already have it
       if (dynamicLabels[uiLanguage]) return; // Already translated
@@ -78,17 +95,23 @@ export default function App() {
     e.preventDefault();
     if (!inputText.trim()) return;
 
-    console.log("Starting analysis for:", inputText);
     setIsLoading(true);
     setError(null);
     setAnalysis(null);
 
     try {
-      const result = await analyzeArabicText(inputText, language);
-      console.log("Analysis result received successfully");
+      let currentToken = accessToken;
+      
+      // If no token and no API key, force sign in
+      if (!currentToken && !process.env.GEMINI_API_KEY) {
+        currentToken = await getAccessToken();
+        setAccessToken(currentToken);
+        localStorage.setItem('gemini_access_token', currentToken);
+      }
+
+      const result = await analyzeArabicText(inputText, language, currentToken || undefined);
       setAnalysis(result);
       
-      // Add to history
       const newItem: HistoryItem = {
         id: Date.now().toString(),
         text: inputText,
@@ -96,13 +119,36 @@ export default function App() {
         language: language,
         timestamp: Date.now()
       };
-      setHistory(prev => [newItem, ...prev].slice(0, 50)); // Keep last 50 items
+      setHistory(prev => [newItem, ...prev].slice(0, 50));
     } catch (err) {
-      console.error("Analysis error:", err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+      if (err instanceof QuotaExceededError) {
+        setShowQuotaUpgrade(true);
+      } else {
+        setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+      }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSignIn = async () => {
+    const clientId = (import.meta as any).env.VITE_CLIENT_ID;
+    if (!clientId) {
+      setError('VITE_CLIENT_ID is missing. Please set it in your environment variables.');
+      return;
+    }
+    try {
+      const token = await getAccessToken();
+      setAccessToken(token);
+      localStorage.setItem('gemini_access_token', token);
+    } catch (err) {
+      setError('Sign-in failed. Please try again.');
+    }
+  };
+
+  const handleSignOut = () => {
+    setAccessToken(null);
+    localStorage.removeItem('gemini_access_token');
   };
 
   const deleteHistoryItem = (id: string) => {
@@ -236,9 +282,24 @@ export default function App() {
 
   return (
     <div className="min-h-screen text-[#2c1810] font-sans selection:bg-[#d4a373] selection:text-white relative">
+      {/* Offline Banner */}
+      <AnimatePresence>
+        {!isOnline && (
+          <motion.div 
+            initial={{ y: -50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -50, opacity: 0 }}
+            className="fixed top-0 left-0 right-0 bg-red-600 text-white py-2 px-4 text-center z-[100] flex items-center justify-center gap-2 font-bold shadow-lg"
+          >
+            <AlertCircle className="w-4 h-4" />
+            <span>آپ اس وقت آف لائن ہیں۔ تحقیق کے لیے انٹرنیٹ ضروری ہے۔</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Corner Buttons */}
       <div className="fixed top-6 left-6 z-50 flex flex-row-reverse gap-3">
-        {/* Info Button (Now on the right of the menu button but still on the left side of screen) */}
+        {/* Info Button */}
         <button 
           className="p-3 bg-[#2c1810] text-[#d4a373] rounded-full shadow-xl border border-[#d4a373]/30 hover:bg-[#3d2b1f] transition-all"
           title="Info"
@@ -264,6 +325,13 @@ export default function App() {
                 exit={{ opacity: 0, scale: 0.9, y: 10, x: -10 }}
                 className="absolute top-full left-0 mt-3 w-48 bg-[#2c1810] border border-[#d4a373]/30 rounded-2xl shadow-2xl overflow-hidden"
               >
+                <button 
+                  onClick={() => { accessToken ? handleSignOut() : handleSignIn(); setIsMenuOpen(false); }}
+                  className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors border-b border-[#d4a373]/10"
+                >
+                  {accessToken ? <User className="w-4 h-4 text-[#d4a373]" /> : <LogIn className="w-4 h-4 text-[#d4a373]" />}
+                  <span>{accessToken ? "Sign Out" : "Sign In"}</span>
+                </button>
                 <button 
                   onClick={() => { setIsHistoryOpen(true); setIsMenuOpen(false); }}
                   className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors border-b border-[#d4a373]/10"
@@ -655,6 +723,42 @@ export default function App() {
               </div>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Quota Upgrade Notification */}
+      <AnimatePresence>
+        {showQuotaUpgrade && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-md p-[1px] rounded-2xl bg-[conic-gradient(from_0deg_at_50%_50%,#323336_19.35%,#4285F4_31.96%,#1AA64A_53.75%,#323336_74.94%,#FCBD00_81.08%,#DB372D_89.49%,#323336_100%)]"
+            >
+              <div className="bg-white dark:bg-[#141414] rounded-2xl p-6 shadow-2xl">
+                <button 
+                  onClick={() => setShowQuotaUpgrade(false)}
+                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-[#d4d4d4] mb-2">
+                  Upgrade to continue your flow
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-[#8c8c8c] mb-6">
+                  You’ve reached your AI usage limit for the day, you can wait for it to reset or upgrade to continue and unlock even more.
+                </p>
+                <a 
+                  href="https://one.google.com/ai?utm_source=ai_studio"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full py-3 px-4 bg-gray-100 dark:bg-[#323232] text-gray-900 dark:text-[#fcfcfc] text-center rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-[#404040] transition-colors"
+                >
+                  Continue to upgrade
+                </a>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

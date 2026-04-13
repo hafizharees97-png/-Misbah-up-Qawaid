@@ -1,16 +1,11 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContent, QuotaExceededError } from "../lib/auth-utils";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const getApiKey = () => (import.meta as any).env.VITE_GEMINI_API_KEY || (import.meta as any).env.GEMINI_API_KEY || "";
 
-export async function analyzeArabicText(text: string, language: string = "Urdu") {
-  if (!process.env.GEMINI_API_KEY) {
-    console.error("GEMINI_API_KEY is missing");
-    throw new Error("Gemini API key is missing. Please set it in the Secrets panel.");
-  }
+const genAI = new GoogleGenerativeAI(getApiKey());
 
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  console.log("Calling Gemini API with language:", language);
-
+export async function analyzeArabicText(text: string, language: string = "Urdu", accessToken?: string) {
   const prompt = `
     You are an expert in Arabic Grammar (Nahw) and Morphology (Sarf), specifically following the traditions of the Hanafi school (Fiqh), Maturidi (Aqeedah), and the Barelvi (Ahl-e-Sunnat) perspective.
     
@@ -29,6 +24,34 @@ export async function analyzeArabicText(text: string, language: string = "Urdu")
     If the language is Urdu or Arabic, use RTL formatting and ensure the terminology is accurate to the Dars-e-Nizami curriculum.
   `;
 
+  if (accessToken) {
+    // Use Gemini Connect (Per-user quota)
+    try {
+      const response = await generateContent(accessToken, {
+        model: "gemini-1.5-flash",
+        contents: [{ role: "user", parts: [{ text: prompt }] }]
+      });
+      // @ts-ignore - The response structure is slightly different but contains candidates
+      return response.candidates[0].content.parts[0].text;
+    } catch (error) {
+      if (error instanceof QuotaExceededError) {
+        throw error;
+      }
+      console.error("Error in Gemini Connect:", error);
+      throw new Error("تحقیق کے دوران خرابی پیش آئی۔ براہ کرم دوبارہ کوشش کریں۔");
+    }
+  }
+
+  // Fallback to API Key (if provided)
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    console.error("GEMINI_API_KEY is missing");
+    throw new Error("Gemini API key is missing. Please set it in the Secrets panel or Sign in with Google.");
+  }
+
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  console.log("Calling Gemini API with language:", language);
+
   try {
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -40,7 +63,8 @@ export async function analyzeArabicText(text: string, language: string = "Urdu")
 }
 
 export async function translateUiLabels(targetLanguage: string) {
-  if (!process.env.GEMINI_API_KEY) return null;
+  const apiKey = getApiKey();
+  if (!apiKey) return null;
 
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
   
