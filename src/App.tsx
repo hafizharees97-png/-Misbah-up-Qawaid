@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { analyzeArabicText, translateUiLabels } from './services/geminiService';
+import { analyzeArabicText, analyzeArabicTextStream, translateUiLabels } from './services/geminiService';
 import { getAccessToken, QuotaExceededError } from './lib/auth-utils';
 import { Search, BookOpen, Loader2, Languages, Info, AlertCircle, History, Trash2, X, Clock, Menu, LogIn, User } from 'lucide-react';
 import Markdown from 'react-markdown';
@@ -76,9 +76,12 @@ export default function App() {
       if (uiLabels[uiLanguage]) return; // Already have it
       if (dynamicLabels[uiLanguage]) return; // Already translated
 
+      // Don't translate if we have no key and no token
+      // if (!hasGlobalApiKey() && !accessToken) return;
+
       setIsTranslating(true);
       try {
-        const translated = await translateUiLabels(uiLanguage);
+        const translated = await translateUiLabels(uiLanguage, accessToken || undefined);
         if (translated) {
           setDynamicLabels(prev => ({ ...prev, [uiLanguage]: translated }));
         }
@@ -89,7 +92,7 @@ export default function App() {
       }
     };
     translate();
-  }, [uiLanguage]);
+  }, [uiLanguage, accessToken]);
 
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,21 +104,19 @@ export default function App() {
 
     try {
       let currentToken = accessToken;
+      let fullAnalysis = "";
       
-      // If no token and no API key, force sign in
-      if (!currentToken && !process.env.GEMINI_API_KEY) {
-        currentToken = await getAccessToken();
-        setAccessToken(currentToken);
-        localStorage.setItem('gemini_access_token', currentToken);
+      const stream = analyzeArabicTextStream(inputText, language, currentToken || undefined);
+      
+      for await (const chunk of stream) {
+        fullAnalysis += chunk;
+        setAnalysis(fullAnalysis);
       }
-
-      const result = await analyzeArabicText(inputText, language, currentToken || undefined);
-      setAnalysis(result);
       
       const newItem: HistoryItem = {
         id: Date.now().toString(),
         text: inputText,
-        analysis: result,
+        analysis: fullAnalysis,
         language: language,
         timestamp: Date.now()
       };
@@ -484,7 +485,7 @@ export default function App() {
         {/* Results Section */}
         <section>
           <AnimatePresence mode="wait">
-            {isLoading ? (
+            {isLoading && !analysis ? (
               <motion.div
                 key="loading"
                 initial={{ opacity: 0 }}
@@ -521,6 +522,15 @@ export default function App() {
                 >
                   <Markdown>{analysis}</Markdown>
                 </div>
+                {isLoading && (
+                  <div className="px-8 pb-4 flex justify-end">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 bg-[#d4a373] rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
+                      <div className="w-2 h-2 bg-[#d4a373] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                      <div className="w-2 h-2 bg-[#d4a373] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                    </div>
+                  </div>
+                )}
               </motion.div>
             ) : (
               <motion.div

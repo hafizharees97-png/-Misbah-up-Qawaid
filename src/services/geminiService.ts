@@ -1,9 +1,55 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { generateContent, QuotaExceededError } from "../lib/auth-utils";
 
-const getApiKey = () => (import.meta as any).env.VITE_GEMINI_API_KEY || (import.meta as any).env.GEMINI_API_KEY || "";
+// Special handling for Gemini API Key in AI Studio Build environment
+// AI Studio automatically replaces process.env.GEMINI_API_KEY at build/runtime
+const ai = new GoogleGenAI({ 
+  apiKey: process.env.GEMINI_API_KEY || "" 
+});
 
-const genAI = new GoogleGenerativeAI(getApiKey());
+export async function* analyzeArabicTextStream(text: string, language: string = "Urdu", accessToken?: string) {
+  const prompt = `
+    You are an expert in Arabic Grammar (Nahw) and Morphology (Sarf), specifically following the traditions of the Hanafi school (Fiqh), Maturidi (Aqeedah), and the Barelvi (Ahl-e-Sunnat) perspective.
+    
+    Analyze the following Arabic text in extreme detail (مکمل تفصیل کے ساتھ):
+    "${text}"
+    
+    Provide the analysis strictly in ${language}. 
+    
+    The analysis must include:
+    1. **Sarf Analysis (صرفی تحقیق):** Comprehensive breakdown of every single word. Mention Root Letters (مادہ), Scale (وزن), Type (اسم/فعل/حرف), and specific sub-types (e.g., Ism-e-Fa'il, Thulathi Mujarrad/Mazeed Feeh, etc.).
+    2. **Nahw Analysis (نحوی ترکیب):** Detailed syntactic relationship between all words. Identify Mubtada (مبتدا), Khabar (خبر), Fa'il (فاعل), Maf'ul (مفعول), Mudaf (مضاف), Sifat (صفت), etc. Explain the grammatical state (I'rab) of each word.
+    3. **Translation (ترجمہ):** A precise and respectful translation in ${language}.
+    4. **Theological/Jurisprudential Context (علمی و فقہی فوائد):** If the text is from the Quran, Hadith, or a classical text, provide a brief explanation according to the Hanafi/Maturidi/Barelvi viewpoint.
+    
+    Format the output using clear Markdown headings, bold text for emphasis, and bullet points. Use professional, scholarly, and respectful language (علمی اور باوقار انداز).
+    If the language is Urdu or Arabic, use RTL formatting and ensure the terminology is accurate to the Dars-e-Nizami curriculum.
+  `;
+
+  if (accessToken) {
+    // Gemini Connect currently doesn't easily support streaming with the basic fetch helper
+    // Fallback to full response for now, but yield it in one go
+    const result = await analyzeArabicText(text, language, accessToken);
+    yield result;
+    return;
+  }
+
+  try {
+    const stream = await ai.models.generateContentStream({
+      model: "gemini-3-flash-preview",
+      contents: prompt
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.text) {
+        yield chunk.text;
+      }
+    }
+  } catch (error) {
+    console.error("Error streaming analysis:", error);
+    throw error;
+  }
+}
 
 export async function analyzeArabicText(text: string, language: string = "Urdu", accessToken?: string) {
   const prompt = `
@@ -28,7 +74,7 @@ export async function analyzeArabicText(text: string, language: string = "Urdu",
     // Use Gemini Connect (Per-user quota)
     try {
       const response = await generateContent(accessToken, {
-        model: "gemini-1.5-flash",
+        model: "gemini-3-flash-preview",
         contents: [{ role: "user", parts: [{ text: prompt }] }]
       });
       // @ts-ignore - The response structure is slightly different but contains candidates
@@ -42,32 +88,23 @@ export async function analyzeArabicText(text: string, language: string = "Urdu",
     }
   }
 
-  // Fallback to API Key (if provided)
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    console.error("GEMINI_API_KEY is missing");
-    throw new Error("Gemini API key is missing. Please set it in the Secrets panel or Sign in with Google.");
-  }
-
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  console.log("Calling Gemini API with language:", language);
-
   try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text();
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt
+    });
+    return response.text;
   } catch (error) {
     console.error("Error analyzing text:", error);
+    // If it's a 403/Forbidden, it might be due to missing key
+    if (String(error).includes("API_KEY_INVALID") || String(error).includes("403")) {
+      throw new Error("API Key غائب ہے یا کام نہیں کر رہی۔ براہ کرم گوگل اکاؤنٹ سے سائن ان کریں یا سیٹنگز چیک کریں۔");
+    }
     throw new Error("تحقیق کے دوران خرابی پیش آئی۔ براہ کرم دوبارہ کوشش کریں۔");
   }
 }
 
-export async function translateUiLabels(targetLanguage: string) {
-  const apiKey = getApiKey();
-  if (!apiKey) return null;
-
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  
+export async function translateUiLabels(targetLanguage: string, accessToken?: string) {
   const baseLabels = {
     subtitle: 'اہلسنت والجماعت (حنفی، ماتریدی، بریلوی) کے علمی ذوق کے مطابق عربی عبارات کی مکمل تحقیق اور اغلاط کی تصحیح',
     placeholder: 'عربی عبارت یہاں لکھیں...',
@@ -97,11 +134,34 @@ export async function translateUiLabels(targetLanguage: string) {
     ${JSON.stringify(baseLabels, null, 2)}
   `;
 
+  if (accessToken) {
+    try {
+      const response = await generateContent(accessToken, {
+        model: "gemini-3-flash-preview",
+        contents: [{ role: "user", parts: [{ text: prompt }] }]
+      });
+      // @ts-ignore
+      const text = response.candidates[0].content.parts[0].text;
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      return JSON.parse(text);
+    } catch (error) {
+      console.error("Error in Gemini Connect translation:", error);
+      return null;
+    }
+  }
+
   try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    // Extract JSON if there's markdown
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+    const text = response.text;
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0]);
