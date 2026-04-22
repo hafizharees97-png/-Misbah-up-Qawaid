@@ -326,23 +326,6 @@ export default function App() {
 
       {/* Corner Buttons */}
       <div className="fixed top-6 left-6 z-50 flex flex-row-reverse gap-3 items-center">
-        {/* Settings Button */}
-        <button 
-          onClick={() => setIsSettingsOpen(true)}
-          className="p-3 bg-[#2c1810] text-[#d4a373] rounded-full shadow-2xl border-2 border-[#d4a373] hover:bg-[#3d2b1f] transition-all transform active:scale-90"
-          title="Settings"
-        >
-          <Settings className="w-6 h-6" />
-        </button>
-
-        {/* Info Button */}
-        <button 
-          className="p-3 bg-[#2c1810] text-[#d4a373] rounded-full shadow-xl border border-[#d4a373]/30 hover:bg-[#3d2b1f] transition-all"
-          title="Info"
-        >
-          <Info className="w-6 h-6" />
-        </button>
-
         {/* Menu Button (Hamburger) */}
         <div className="relative">
           <button 
@@ -361,13 +344,20 @@ export default function App() {
                 exit={{ opacity: 0, scale: 0.9, y: 10, x: -10 }}
                 className="absolute top-full left-0 mt-3 w-48 bg-[#2c1810] border border-[#d4a373]/30 rounded-2xl shadow-2xl overflow-hidden"
               >
-                <button 
-                  onClick={() => { accessToken ? handleSignOut() : handleSignIn(); setIsMenuOpen(false); }}
-                  className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors border-b border-[#d4a373]/10"
-                >
-                  {accessToken ? <User className="w-4 h-4 text-[#d4a373]" /> : <LogIn className="w-4 h-4 text-[#d4a373]" />}
-                  <span>{accessToken ? "Sign Out" : "گوگل سے فعال کریں (Sign In)"}</span>
-                </button>
+                <div className="border-b border-[#d4a373]/10">
+                  <button 
+                    onClick={() => { accessToken ? handleSignOut() : handleSignIn(); setIsMenuOpen(false); }}
+                    className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors"
+                  >
+                    {accessToken ? <User className="w-4 h-4 text-[#d4a373]" /> : <LogIn className="w-4 h-4 text-[#d4a373]" />}
+                    <span>{accessToken ? "Sign Out" : "گوگل سے فعال کریں"}</span>
+                  </button>
+                  {!accessToken && (
+                    <p className="px-6 pb-3 text-[10px] text-[#a89078] leading-tight">
+                      (نوٹ: اگر پاپ اپ بلاک ہو رہا ہو تو نیچے سیٹنگز میں اپنی API Key استعمال کریں)
+                    </p>
+                  )}
+                </div>
                 <button 
                   onClick={() => { setIsHistoryOpen(true); setIsMenuOpen(false); }}
                   className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors border-b border-[#d4a373]/10"
@@ -377,10 +367,24 @@ export default function App() {
                 </button>
                 <button 
                   onClick={() => { setIsLangModalOpen(true); setIsMenuOpen(false); }}
-                  className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors"
+                  className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors border-b border-[#d4a373]/10"
                 >
                   <Languages className="w-4 h-4 text-[#d4a373]" />
                   <span>{labels.language}</span>
+                </button>
+                <button 
+                  onClick={() => { setIsSettingsOpen(true); setIsMenuOpen(false); }}
+                  className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors border-b border-[#d4a373]/10"
+                >
+                  <Settings className="w-4 h-4 text-[#d4a373]" />
+                  <span>سیٹنگز (Settings)</span>
+                </button>
+                <button 
+                  onClick={() => { setIsAboutOpen(true); setIsMenuOpen(false); }}
+                  className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors"
+                >
+                  <Info className="w-4 h-4 text-[#d4a373]" />
+                  <span>ایپ کے بارے میں (About)</span>
                 </button>
               </motion.div>
             )}
