@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { analyzeArabicText, analyzeArabicTextStream, translateUiLabels } from './services/geminiService';
+import { analyzeArabicText, analyzeArabicTextStream, translateUiLabels, getApiKey } from './services/geminiService';
 import { getAccessToken, QuotaExceededError } from './lib/auth-utils';
-import { Search, BookOpen, Loader2, Languages, Info, AlertCircle, History, Trash2, X, Clock, Menu, LogIn, User } from 'lucide-react';
+import { Search, BookOpen, Loader2, Languages, Info, AlertCircle, History, Trash2, X, Clock, Menu, LogIn, User, Settings } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -24,7 +24,9 @@ export default function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
+  const [localApiKey, setLocalApiKey] = useState(localStorage.getItem('miftah_api_key') || '');
   const [isTranslating, setIsTranslating] = useState(false);
   const [dynamicLabels, setDynamicLabels] = useState<Record<string, any>>({});
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -94,6 +96,12 @@ export default function App() {
     translate();
   }, [uiLanguage, accessToken]);
 
+  const saveLocalApiKey = (key: string) => {
+    setLocalApiKey(key);
+    localStorage.setItem('miftah_api_key', key);
+    window.location.reload(); // Reload to re-initialize the AI client with the new key
+  };
+
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
@@ -104,8 +112,21 @@ export default function App() {
 
     try {
       let currentToken = accessToken;
-      let fullAnalysis = "";
       
+      // Automatic login trigger if no identity found
+      if (!currentToken && !getApiKey()) {
+        try {
+          currentToken = await getAccessToken();
+          setAccessToken(currentToken);
+          localStorage.setItem('gemini_access_token', currentToken);
+        } catch (signInErr) {
+          setError('ایپ کو فعال کرنے کے لیے گوگل اکاؤنٹ سے سائن ان کرنا ضروری ہے۔');
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      let fullAnalysis = "";
       const stream = analyzeArabicTextStream(inputText, language, currentToken || undefined);
       
       for await (const chunk of stream) {
@@ -142,8 +163,13 @@ export default function App() {
       const token = await getAccessToken();
       setAccessToken(token);
       localStorage.setItem('gemini_access_token', token);
+      setError(null); // Clear any previous error on success
     } catch (err) {
-      setError('Sign-in failed. Please try again.');
+      if (err instanceof Error && err.message.includes('پاپ اپ')) {
+        setError(err.message);
+      } else {
+        setError('سائن ان نہیں ہو سکا۔ اگر آپ اسے موبائل ایپ کے طور پر استعمال کر رہے ہیں تو یقینی بنائیں کہ پاپ اپس الاؤ ہیں۔');
+      }
     }
   };
 
@@ -299,7 +325,16 @@ export default function App() {
       </AnimatePresence>
 
       {/* Corner Buttons */}
-      <div className="fixed top-6 left-6 z-50 flex flex-row-reverse gap-3">
+      <div className="fixed top-6 left-6 z-50 flex flex-row-reverse gap-3 items-center">
+        {/* Settings Button */}
+        <button 
+          onClick={() => setIsSettingsOpen(true)}
+          className="p-3 bg-[#2c1810] text-[#d4a373] rounded-full shadow-2xl border-2 border-[#d4a373] hover:bg-[#3d2b1f] transition-all transform active:scale-90"
+          title="Settings"
+        >
+          <Settings className="w-6 h-6" />
+        </button>
+
         {/* Info Button */}
         <button 
           className="p-3 bg-[#2c1810] text-[#d4a373] rounded-full shadow-xl border border-[#d4a373]/30 hover:bg-[#3d2b1f] transition-all"
@@ -331,7 +366,7 @@ export default function App() {
                   className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors border-b border-[#d4a373]/10"
                 >
                   {accessToken ? <User className="w-4 h-4 text-[#d4a373]" /> : <LogIn className="w-4 h-4 text-[#d4a373]" />}
-                  <span>{accessToken ? "Sign Out" : "Sign In"}</span>
+                  <span>{accessToken ? "Sign Out" : "گوگل سے فعال کریں (Sign In)"}</span>
                 </button>
                 <button 
                   onClick={() => { setIsHistoryOpen(true); setIsMenuOpen(false); }}
@@ -378,8 +413,9 @@ export default function App() {
                   <BookOpen className="w-12 h-12 text-[#d4a373]" />
                 </div>
                 <div>
-                  <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-white mb-2 drop-shadow-md">
+                  <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-white mb-2 drop-shadow-md flex items-center justify-center lg:justify-end gap-3">
                     مصباحُ القواعد
+                    <span className="text-xs bg-[#d4a373] text-[#2c1810] px-3 py-1 rounded-full font-mono font-bold self-center">v1.2</span>
                   </h1>
                   <div className="h-1 w-32 bg-[#d4a373] mx-auto lg:mr-0 lg:ml-auto rounded-full"></div>
                 </div>
@@ -467,17 +503,28 @@ export default function App() {
           </div>
         </section>
 
-        {/* Status Messages */}
+        {/* Status Messages - Only show during active error or if analysis failed */}
         <AnimatePresence>
-          {error && (
+          {error && !isLoading && (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="mb-8 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center gap-3"
+              className="mb-10 p-6 bg-red-50 border-2 border-red-200 text-red-800 rounded-3xl flex flex-col items-center gap-4 text-center shadow-lg"
             >
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
-              <p>{error}</p>
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-6 h-6 text-red-500" />
+                <p className="font-bold text-lg">{error}</p>
+              </div>
+              {!accessToken && !getApiKey() && (
+                <button 
+                  onClick={handleSignIn}
+                  className="px-8 py-3 bg-[#2c1810] text-[#d4a373] rounded-xl font-bold flex items-center gap-2 hover:bg-[#3d2b1f] transition-all shadow-md active:scale-95"
+                >
+                  <LogIn className="w-5 h-5" />
+                  گوگل سے ایکٹیویٹ کریں
+                </button>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -561,6 +608,65 @@ export default function App() {
           <p className="text-xs opacity-60">© {new Date().getFullYear()} مصباحُ القواعد - تمام حقوق محفوظ ہیں</p>
         </div>
       </footer>
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-[#f8f5f0] w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-8"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <div className="p-2 bg-[#2c1810] rounded-lg">
+                    <Loader2 className="w-5 h-5 text-[#d4a373]" />
+                  </div>
+                  سیٹنگز (Settings)
+                </h2>
+                <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-bold text-[#a89078] mb-2">اپنی API Key درج کریں (آپشنل)</label>
+                  <input 
+                    type="password"
+                    value={localApiKey}
+                    onChange={(e) => setLocalApiKey(e.target.value)}
+                    placeholder="یہاں کی (Key) پیسٹ کریں..."
+                    className="w-full p-4 bg-white border border-[#e0d5c1] rounded-xl outline-none focus:border-[#d4a373] transition-all"
+                  />
+                  <p className="mt-2 text-xs text-gray-500">اگر آپ سائن ان نہیں کرنا چاہتے تو یہاں کی ڈال کر سیو کر لیں۔</p>
+                </div>
+
+                <button 
+                  onClick={() => { saveLocalApiKey(localApiKey); setIsSettingsOpen(false); }}
+                  className="w-full py-4 bg-[#d4a373] text-white rounded-xl font-bold hover:bg-[#bc8a5f] transition-all shadow-lg"
+                >
+                  محفوظ کریں (Save)
+                </button>
+
+                <div className="pt-4 border-t border-[#e0d5c1]">
+                  <p className="text-xs text-center text-[#a89078]">
+                    ایپ کا ورژن: v1.0.1 <br/>
+                    تیار کردہ برائے: مصباح القواعد
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* History Modal */}
       <AnimatePresence>
         {isHistoryOpen && (

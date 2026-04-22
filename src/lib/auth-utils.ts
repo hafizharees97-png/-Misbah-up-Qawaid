@@ -14,6 +14,11 @@ export const getAccessToken = (): Promise<string> => {
   return new Promise((resolve, reject) => {
     const authWindow = window.open(AUTH_POPUP_URL, 'google-signin', 'width=600,height=700');
 
+    if (!authWindow) {
+      reject(new Error('پاپ اپ بلاک کر دیا گیا ہے۔ براہ کرم اپنے براؤزر یا ایپ کی سیٹنگز میں پاپ اپس (Popups) کی اجازت دیں۔'));
+      return;
+    }
+
     let timeoutId: number | null = null;
 
     const cleanup = () => {

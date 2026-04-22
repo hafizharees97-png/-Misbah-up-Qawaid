@@ -1,11 +1,38 @@
 import { GoogleGenAI } from "@google/genai";
 import { generateContent, QuotaExceededError } from "../lib/auth-utils";
 
-// Special handling for Gemini API Key in AI Studio Build environment
-// AI Studio automatically replaces process.env.GEMINI_API_KEY at build/runtime
-const ai = new GoogleGenAI({ 
-  apiKey: process.env.GEMINI_API_KEY || "" 
-});
+// Helper to get the API key in different environments
+export const getApiKey = () => {
+  // 1. Check local storage first (user provided via Settings)
+  const storedKey = typeof window !== "undefined" ? localStorage.getItem('miftah_api_key') : null;
+  if (storedKey && storedKey !== "undefined" && storedKey !== "null") return storedKey;
+
+  // 2. Use import.meta.env as primary for Vite
+  let key = (import.meta as any).env.VITE_GEMINI_API_KEY;
+  
+  // Fallback to process.env (for platform injection)
+  if (!key && typeof process !== "undefined" && process.env) {
+    key = process.env.GEMINI_API_KEY;
+  }
+  
+  // Clean up potential "undefined" or "null" strings from builder substitutions
+  if (!key || key === "undefined" || key === "null") return "";
+  return key;
+};
+
+let aiClient: GoogleGenAI | null = null;
+
+const getAiClient = () => {
+  if (!aiClient) {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      // In mobile app wrappers, the environment variable might be literally the string "undefined"
+      throw new Error("ایپ کو فعال کرنے کی ضرورت ہے۔ براہ کرم مینو سے سائن ان کریں یا سیٹنگز (Gear Icon) میں اپنی اے پی آئی کی درج کریں۔");
+    }
+    aiClient = new GoogleGenAI({ apiKey });
+  }
+  return aiClient;
+};
 
 export async function* analyzeArabicTextStream(text: string, language: string = "Urdu", accessToken?: string) {
   const prompt = `
@@ -35,6 +62,7 @@ export async function* analyzeArabicTextStream(text: string, language: string = 
   }
 
   try {
+    const ai = getAiClient();
     const stream = await ai.models.generateContentStream({
       model: "gemini-3-flash-preview",
       contents: prompt
@@ -88,7 +116,9 @@ export async function analyzeArabicText(text: string, language: string = "Urdu",
     }
   }
 
+  // Fallback to API Key (if provided)
   try {
+    const ai = getAiClient();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt
@@ -96,9 +126,10 @@ export async function analyzeArabicText(text: string, language: string = "Urdu",
     return response.text;
   } catch (error) {
     console.error("Error analyzing text:", error);
-    // If it's a 403/Forbidden, it might be due to missing key
-    if (String(error).includes("API_KEY_INVALID") || String(error).includes("403")) {
-      throw new Error("API Key غائب ہے یا کام نہیں کر رہی۔ براہ کرم گوگل اکاؤنٹ سے سائن ان کریں یا سیٹنگز چیک کریں۔");
+    // If it's a 403/Forbidden, it might be due to missing/invalid key
+    const errStr = String(error);
+    if (errStr.includes("API_KEY_INVALID") || errStr.includes("403") || errStr.includes("API key is missing")) {
+      throw new Error("API Key غائب ہے یا کام نہیں کر رہی۔ براہ کرم مینو سے سائن ان کریں یا اپنی سیٹنگز چیک کریں۔");
     }
     throw new Error("تحقیق کے دوران خرابی پیش آئی۔ براہ کرم دوبارہ کوشش کریں۔");
   }
@@ -154,6 +185,7 @@ export async function translateUiLabels(targetLanguage: string, accessToken?: st
   }
 
   try {
+    const ai = getAiClient();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt,
