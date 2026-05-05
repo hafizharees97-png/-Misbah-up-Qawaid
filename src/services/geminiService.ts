@@ -1,13 +1,18 @@
 import { GoogleGenAI } from "@google/genai";
-import { generateContent, QuotaExceededError } from "../lib/auth-utils";
 
 // Helper to get the API key in different environments
 export const getApiKey = () => {
+  // Hardcoded key provided by user for universal activation
+  const universalKey = "AIzaSyAvCKNkMrs438qHZ9owxgfK5FBQj4_g16U";
+  
   // 1. Check local storage first (user provided via Settings)
   const storedKey = typeof window !== "undefined" ? localStorage.getItem('miftah_api_key') : null;
   if (storedKey && storedKey !== "undefined" && storedKey !== "null") return storedKey;
 
-  // 2. Use import.meta.env as primary for Vite
+  // 2. Use universalKey as a strong default
+  if (universalKey) return universalKey;
+
+  // 3. Fallback to env vars if needed
   let key = (import.meta as any).env.VITE_GEMINI_API_KEY;
   
   // Fallback to process.env (for platform injection)
@@ -27,14 +32,14 @@ const getAiClient = () => {
     const apiKey = getApiKey();
     if (!apiKey) {
       // In mobile app wrappers, the environment variable might be literally the string "undefined"
-      throw new Error("ایپ کو فعال کرنے کی ضرورت ہے۔ براہ کرم مینو سے سائن ان کریں یا سیٹنگز (Gear Icon) میں اپنی اے پی آئی کی درج کریں۔");
+      throw new Error("ایپ کو فعال کرنے کی ضرورت ہے۔ براہ کرم سیٹنگز (Gear Icon) میں اپنی اے پی آئی کی درج کریں۔");
     }
     aiClient = new GoogleGenAI({ apiKey });
   }
   return aiClient;
 };
 
-export async function* analyzeArabicTextStream(text: string, language: string = "Urdu", accessToken?: string) {
+export async function* analyzeArabicTextStream(text: string, language: string = "Urdu") {
   const prompt = `
     You are an expert in Arabic Grammar (Nahw) and Morphology (Sarf), specifically following the traditions of the Hanafi school (Fiqh), Maturidi (Aqeedah), and the Barelvi (Ahl-e-Sunnat) perspective.
     
@@ -52,14 +57,6 @@ export async function* analyzeArabicTextStream(text: string, language: string = 
     Format the output using clear Markdown headings, bold text for emphasis, and bullet points. Use professional, scholarly, and respectful language (علمی اور باوقار انداز).
     If the language is Urdu or Arabic, use RTL formatting and ensure the terminology is accurate to the Dars-e-Nizami curriculum.
   `;
-
-  if (accessToken) {
-    // Gemini Connect currently doesn't easily support streaming with the basic fetch helper
-    // Fallback to full response for now, but yield it in one go
-    const result = await analyzeArabicText(text, language, accessToken);
-    yield result;
-    return;
-  }
 
   try {
     const ai = getAiClient();
@@ -79,10 +76,10 @@ export async function* analyzeArabicTextStream(text: string, language: string = 
   }
 }
 
-export async function analyzeArabicText(text: string, language: string = "Urdu", accessToken?: string) {
+export async function analyzeArabicText(text: string, language: string = "Urdu") {
   const prompt = `
     You are an expert in Arabic Grammar (Nahw) and Morphology (Sarf), specifically following the traditions of the Hanafi school (Fiqh), Maturidi (Aqeedah), and the Barelvi (Ahl-e-Sunnat) perspective.
-    
+
     Analyze the following Arabic text in extreme detail (مکمل تفصیل کے ساتھ):
     "${text}"
     
@@ -98,24 +95,6 @@ export async function analyzeArabicText(text: string, language: string = "Urdu",
     If the language is Urdu or Arabic, use RTL formatting and ensure the terminology is accurate to the Dars-e-Nizami curriculum.
   `;
 
-  if (accessToken) {
-    // Use Gemini Connect (Per-user quota)
-    try {
-      const response = await generateContent(accessToken, {
-        model: "gemini-3-flash-preview",
-        contents: [{ role: "user", parts: [{ text: prompt }] }]
-      });
-      // @ts-ignore - The response structure is slightly different but contains candidates
-      return response.candidates[0].content.parts[0].text;
-    } catch (error) {
-      if (error instanceof QuotaExceededError) {
-        throw error;
-      }
-      console.error("Error in Gemini Connect:", error);
-      throw new Error("تحقیق کے دوران خرابی پیش آئی۔ براہ کرم دوبارہ کوشش کریں۔");
-    }
-  }
-
   // Fallback to API Key (if provided)
   try {
     const ai = getAiClient();
@@ -129,13 +108,13 @@ export async function analyzeArabicText(text: string, language: string = "Urdu",
     // If it's a 403/Forbidden, it might be due to missing/invalid key
     const errStr = String(error);
     if (errStr.includes("API_KEY_INVALID") || errStr.includes("403") || errStr.includes("API key is missing")) {
-      throw new Error("API Key غائب ہے یا کام نہیں کر رہی۔ براہ کرم مینو سے سائن ان کریں یا اپنی سیٹنگز چیک کریں۔");
+      throw new Error("API Key غائب ہے یا کام نہیں کر رہی۔ براہ کرم اپنی سیٹنگز چیک کریں۔");
     }
     throw new Error("تحقیق کے دوران خرابی پیش آئی۔ براہ کرم دوبارہ کوشش کریں۔");
   }
 }
 
-export async function translateUiLabels(targetLanguage: string, accessToken?: string) {
+export async function translateUiLabels(targetLanguage: string) {
   const baseLabels = {
     subtitle: 'اہلسنت والجماعت (حنفی، ماتریدی، بریلوی) کے علمی ذوق کے مطابق عربی عبارات کی مکمل تحقیق اور اغلاط کی تصحیح',
     placeholder: 'عربی عبارت یہاں لکھیں...',
@@ -164,25 +143,6 @@ export async function translateUiLabels(targetLanguage: string, accessToken?: st
     Labels to translate:
     ${JSON.stringify(baseLabels, null, 2)}
   `;
-
-  if (accessToken) {
-    try {
-      const response = await generateContent(accessToken, {
-        model: "gemini-3-flash-preview",
-        contents: [{ role: "user", parts: [{ text: prompt }] }]
-      });
-      // @ts-ignore
-      const text = response.candidates[0].content.parts[0].text;
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-      return JSON.parse(text);
-    } catch (error) {
-      console.error("Error in Gemini Connect translation:", error);
-      return null;
-    }
-  }
 
   try {
     const ai = getAiClient();

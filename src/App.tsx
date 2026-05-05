@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { analyzeArabicText, analyzeArabicTextStream, translateUiLabels, getApiKey } from './services/geminiService';
-import { getAccessToken, QuotaExceededError } from './lib/auth-utils';
-import { Search, BookOpen, Loader2, Languages, Info, AlertCircle, History, Trash2, X, Clock, Menu, LogIn, User, Settings } from 'lucide-react';
+import { Search, BookOpen, Loader2, Languages, Info, AlertCircle, History, Trash2, X, Clock, Menu } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -24,14 +23,11 @@ export default function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
-  const [localApiKey, setLocalApiKey] = useState(localStorage.getItem('miftah_api_key') || '');
   const [isTranslating, setIsTranslating] = useState(false);
   const [dynamicLabels, setDynamicLabels] = useState<Record<string, any>>({});
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [accessToken, setAccessToken] = useState<string | null>(localStorage.getItem('gemini_access_token'));
-  const [showQuotaUpgrade, setShowQuotaUpgrade] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
 
   const worldLanguages = [
     "Urdu", "Arabic", "English", "Persian", "Turkish", "Hindi", "Bengali", "Punjabi", "Pashto", "Sindhi",
@@ -78,12 +74,12 @@ export default function App() {
       if (uiLabels[uiLanguage]) return; // Already have it
       if (dynamicLabels[uiLanguage]) return; // Already translated
 
-      // Don't translate if we have no key and no token
-      // if (!hasGlobalApiKey() && !accessToken) return;
+      // Don't translate if we have no key
+      // if (!getApiKey()) return;
 
       setIsTranslating(true);
       try {
-        const translated = await translateUiLabels(uiLanguage, accessToken || undefined);
+        const translated = await translateUiLabels(uiLanguage);
         if (translated) {
           setDynamicLabels(prev => ({ ...prev, [uiLanguage]: translated }));
         }
@@ -94,13 +90,8 @@ export default function App() {
       }
     };
     translate();
-  }, [uiLanguage, accessToken]);
+  }, [uiLanguage]);
 
-  const saveLocalApiKey = (key: string) => {
-    setLocalApiKey(key);
-    localStorage.setItem('miftah_api_key', key);
-    window.location.reload(); // Reload to re-initialize the AI client with the new key
-  };
 
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,23 +102,14 @@ export default function App() {
     setAnalysis(null);
 
     try {
-      let currentToken = accessToken;
-      
-      // Automatic login trigger if no identity found
-      if (!currentToken && !getApiKey()) {
-        try {
-          currentToken = await getAccessToken();
-          setAccessToken(currentToken);
-          localStorage.setItem('gemini_access_token', currentToken);
-        } catch (signInErr) {
-          setError('ایپ کو فعال کرنے کے لیے گوگل اکاؤنٹ سے سائن ان کرنا ضروری ہے۔');
-          setIsLoading(false);
-          return;
-        }
+      if (!getApiKey()) {
+        setError('ایپ کو فعال کرنے کی ضرورت ہے۔ براہ کرم ایڈمن سے رابطہ کریں۔');
+        setIsLoading(false);
+        return;
       }
 
       let fullAnalysis = "";
-      const stream = analyzeArabicTextStream(inputText, language, currentToken || undefined);
+      const stream = analyzeArabicTextStream(inputText, language);
       
       for await (const chunk of stream) {
         fullAnalysis += chunk;
@@ -143,39 +125,10 @@ export default function App() {
       };
       setHistory(prev => [newItem, ...prev].slice(0, 50));
     } catch (err) {
-      if (err instanceof QuotaExceededError) {
-        setShowQuotaUpgrade(true);
-      } else {
-        setError(err instanceof Error ? err.message : 'An unexpected error occurred');
-      }
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleSignIn = async () => {
-    const clientId = (import.meta as any).env.VITE_CLIENT_ID;
-    if (!clientId) {
-      setError('VITE_CLIENT_ID is missing. Please set it in your environment variables.');
-      return;
-    }
-    try {
-      const token = await getAccessToken();
-      setAccessToken(token);
-      localStorage.setItem('gemini_access_token', token);
-      setError(null); // Clear any previous error on success
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('پاپ اپ')) {
-        setError(err.message);
-      } else {
-        setError('سائن ان نہیں ہو سکا۔ اگر آپ اسے موبائل ایپ کے طور پر استعمال کر رہے ہیں تو یقینی بنائیں کہ پاپ اپس الاؤ ہیں۔');
-      }
-    }
-  };
-
-  const handleSignOut = () => {
-    setAccessToken(null);
-    localStorage.removeItem('gemini_access_token');
   };
 
   const deleteHistoryItem = (id: string) => {
@@ -344,20 +297,6 @@ export default function App() {
                 exit={{ opacity: 0, scale: 0.9, y: 10, x: -10 }}
                 className="absolute top-full left-0 mt-3 w-48 bg-[#2c1810] border border-[#d4a373]/30 rounded-2xl shadow-2xl overflow-hidden"
               >
-                <div className="border-b border-[#d4a373]/10">
-                  <button 
-                    onClick={() => { accessToken ? handleSignOut() : handleSignIn(); setIsMenuOpen(false); }}
-                    className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors"
-                  >
-                    {accessToken ? <User className="w-4 h-4 text-[#d4a373]" /> : <LogIn className="w-4 h-4 text-[#d4a373]" />}
-                    <span>{accessToken ? "Sign Out" : "گوگل سے فعال کریں"}</span>
-                  </button>
-                  {!accessToken && (
-                    <p className="px-6 pb-3 text-[10px] text-[#a89078] leading-tight">
-                      (نوٹ: اگر پاپ اپ بلاک ہو رہا ہو تو نیچے سیٹنگز میں اپنی API Key استعمال کریں)
-                    </p>
-                  )}
-                </div>
                 <button 
                   onClick={() => { setIsHistoryOpen(true); setIsMenuOpen(false); }}
                   className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors border-b border-[#d4a373]/10"
@@ -371,13 +310,6 @@ export default function App() {
                 >
                   <Languages className="w-4 h-4 text-[#d4a373]" />
                   <span>{labels.language}</span>
-                </button>
-                <button 
-                  onClick={() => { setIsSettingsOpen(true); setIsMenuOpen(false); }}
-                  className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors border-b border-[#d4a373]/10"
-                >
-                  <Settings className="w-4 h-4 text-[#d4a373]" />
-                  <span>سیٹنگز (Settings)</span>
                 </button>
                 <button 
                   onClick={() => { setIsAboutOpen(true); setIsMenuOpen(false); }}
@@ -507,7 +439,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* Status Messages - Only show during active error or if analysis failed */}
+        {/* Status Messages - Only show during active error */}
         <AnimatePresence>
           {error && !isLoading && (
             <motion.div
@@ -520,15 +452,6 @@ export default function App() {
                 <AlertCircle className="w-6 h-6 text-red-500" />
                 <p className="font-bold text-lg">{error}</p>
               </div>
-              {!accessToken && !getApiKey() && (
-                <button 
-                  onClick={handleSignIn}
-                  className="px-8 py-3 bg-[#2c1810] text-[#d4a373] rounded-xl font-bold flex items-center gap-2 hover:bg-[#3d2b1f] transition-all shadow-md active:scale-95"
-                >
-                  <LogIn className="w-5 h-5" />
-                  گوگل سے ایکٹیویٹ کریں
-                </button>
-              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -612,65 +535,6 @@ export default function App() {
           <p className="text-xs opacity-60">© {new Date().getFullYear()} مصباحُ القواعد - تمام حقوق محفوظ ہیں</p>
         </div>
       </footer>
-      {/* Settings Modal */}
-      <AnimatePresence>
-        {isSettingsOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-[#f8f5f0] w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-8"
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <div className="p-2 bg-[#2c1810] rounded-lg">
-                    <Loader2 className="w-5 h-5 text-[#d4a373]" />
-                  </div>
-                  سیٹنگز (Settings)
-                </h2>
-                <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-bold text-[#a89078] mb-2">اپنی API Key درج کریں (آپشنل)</label>
-                  <input 
-                    type="password"
-                    value={localApiKey}
-                    onChange={(e) => setLocalApiKey(e.target.value)}
-                    placeholder="یہاں کی (Key) پیسٹ کریں..."
-                    className="w-full p-4 bg-white border border-[#e0d5c1] rounded-xl outline-none focus:border-[#d4a373] transition-all"
-                  />
-                  <p className="mt-2 text-xs text-gray-500">اگر آپ سائن ان نہیں کرنا چاہتے تو یہاں کی ڈال کر سیو کر لیں۔</p>
-                </div>
-
-                <button 
-                  onClick={() => { saveLocalApiKey(localApiKey); setIsSettingsOpen(false); }}
-                  className="w-full py-4 bg-[#d4a373] text-white rounded-xl font-bold hover:bg-[#bc8a5f] transition-all shadow-lg"
-                >
-                  محفوظ کریں (Save)
-                </button>
-
-                <div className="pt-4 border-t border-[#e0d5c1]">
-                  <p className="text-xs text-center text-[#a89078]">
-                    ایپ کا ورژن: v1.0.1 <br/>
-                    تیار کردہ برائے: مصباح القواعد
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* History Modal */}
       <AnimatePresence>
         {isHistoryOpen && (
@@ -843,42 +707,6 @@ export default function App() {
               </div>
             </motion.div>
           </motion.div>
-        )}
-      </AnimatePresence>
-      {/* Quota Upgrade Notification */}
-      <AnimatePresence>
-        {showQuotaUpgrade && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="relative w-full max-w-md p-[1px] rounded-2xl bg-[conic-gradient(from_0deg_at_50%_50%,#323336_19.35%,#4285F4_31.96%,#1AA64A_53.75%,#323336_74.94%,#FCBD00_81.08%,#DB372D_89.49%,#323336_100%)]"
-            >
-              <div className="bg-white dark:bg-[#141414] rounded-2xl p-6 shadow-2xl">
-                <button 
-                  onClick={() => setShowQuotaUpgrade(false)}
-                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-                <h3 className="text-lg font-medium text-gray-900 dark:text-[#d4d4d4] mb-2">
-                  Upgrade to continue your flow
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-[#8c8c8c] mb-6">
-                  You’ve reached your AI usage limit for the day, you can wait for it to reset or upgrade to continue and unlock even more.
-                </p>
-                <a 
-                  href="https://one.google.com/ai?utm_source=ai_studio"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full py-3 px-4 bg-gray-100 dark:bg-[#323232] text-gray-900 dark:text-[#fcfcfc] text-center rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-[#404040] transition-colors"
-                >
-                  Continue to upgrade
-                </a>
-              </div>
-            </motion.div>
-          </div>
         )}
       </AnimatePresence>
     </div>
