@@ -60,12 +60,12 @@ export async function* analyzeArabicTextStream(text: string, language: string = 
 
   try {
     const ai = getAiClient();
-    const stream = await ai.models.generateContentStream({
+    const response = await ai.models.generateContentStream({
       model: "gemini-3-flash-preview",
       contents: prompt
     });
 
-    for await (const chunk of stream) {
+    for await (const chunk of response) {
       if (chunk.text) {
         yield chunk.text;
       }

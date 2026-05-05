@@ -305,7 +305,7 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <div className="text-center py-20 bg-white/5 rounded-3xl border-2 border-dashed border-[#d4a373]/20">
+          <div className="text-center py-20 bg-white text-[#2c1810] rounded-3xl shadow-xl border border-[#d4a373]/20">
             <p className="text-[#a89078] text-lg">عربی عبارت درج کرکے 'تحقیق کریں' پر کلک کریں</p>
           </div>
         )}
