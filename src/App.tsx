@@ -27,16 +27,62 @@ export default function App() {
   const [isTranslating, setIsTranslating] = useState(false);
   const [dynamicLabels, setDynamicLabels] = useState<Record<string, any>>({});
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [isAboutOpen, setIsAboutOpen] = useState(false);
 
-  const worldLanguages = [
-    "Urdu", "Arabic", "English", "Persian", "Turkish", "Hindi", "Bengali", "Punjabi", "Pashto", "Sindhi",
-    "French", "Spanish", "German", "Russian", "Chinese", "Japanese", "Korean", "Indonesian", "Malay",
-    "Portuguese", "Italian", "Dutch", "Greek", "Hebrew", "Thai", "Vietnamese", "Tamil", "Telugu",
-    "Marathi", "Gujarati", "Kannada", "Malayalam", "Hausa", "Swahili", "Amharic", "Oromo", "Somali",
-    "Yoruba", "Igbo", "Zulu", "Xhosa", "Afrikaans", "Polish", "Ukrainian", "Romanian", "Hungarian",
-    "Czech", "Swedish", "Norwegian", "Danish", "Finnish"
-  ].sort();
+  const languageMap: Record<string, string> = {
+    "Urdu": "اردو",
+    "Arabic": "عربی",
+    "English": "انگریزی",
+    "Persian": "فارسی",
+    "Turkish": "ترکی",
+    "Hindi": "ہندی",
+    "Bengali": "بنگالی",
+    "Punjabi": "پنجابی",
+    "Pashto": "پشتو",
+    "Sindhi": "سندھی",
+    "French": "فرانسیسی",
+    "Spanish": "ہسپانوی",
+    "German": "جرمن",
+    "Russian": "روسی",
+    "Chinese": "چینی",
+    "Japanese": "جاپانی",
+    "Korean": "کوریائی",
+    "Indonesian": "انڈونیشیائی",
+    "Malay": "ملائی",
+    "Portuguese": "پرتگالی",
+    "Italian": "اطالوی",
+    "Dutch": "ڈچ",
+    "Greek": "یونانی",
+    "Hebrew": "عبرانی",
+    "Thai": "تھائی",
+    "Vietnamese": "ویتنامی",
+    "Tamil": "تامل",
+    "Telugu": "تیلگو",
+    "Marathi": "مراٹھی",
+    "Gujarati": "گجراتی",
+    "Kannada": "کنڑ",
+    "Malayalam": "ملیالم",
+    "Hausa": "ہوسا",
+    "Swahili": "سواحلی",
+    "Amharic": "امہاری",
+    "Oromo": "اورومو",
+    "Somali": "صومالی",
+    "Yoruba": "یوروبا",
+    "Igbo": "اگبو",
+    "Zulu": "زولو",
+    "Xhosa": "ایکسہوسا",
+    "Afrikaans": "افریقی",
+    "Polish": "پولش",
+    "Ukrainian": "یوکرینی",
+    "Romanian": "رومانیائی",
+    "Hungarian": "ہنگری",
+    "Czech": "چیک",
+    "Swedish": "سویڈش",
+    "Norwegian": "نارویجن",
+    "Danish": "دانش",
+    "Finnish": "فننش"
+  };
+
+  const worldLanguages = Object.keys(languageMap).sort();
 
   // Load history from localStorage on mount
   useEffect(() => {
@@ -306,17 +352,10 @@ export default function App() {
                 </button>
                 <button 
                   onClick={() => { setIsLangModalOpen(true); setIsMenuOpen(false); }}
-                  className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors border-b border-[#d4a373]/10"
+                  className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors"
                 >
                   <Languages className="w-4 h-4 text-[#d4a373]" />
                   <span>{labels.language}</span>
-                </button>
-                <button 
-                  onClick={() => { setIsAboutOpen(true); setIsMenuOpen(false); }}
-                  className="w-full px-6 py-4 text-left flex items-center gap-3 hover:bg-[#3d2b1f] text-[#f8f5f0] transition-colors"
-                >
-                  <Info className="w-4 h-4 text-[#d4a373]" />
-                  <span>ایپ کے بارے میں (About)</span>
                 </button>
               </motion.div>
             )}
@@ -351,7 +390,6 @@ export default function App() {
                 <div>
                   <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-white mb-2 drop-shadow-md flex items-center justify-center lg:justify-end gap-3">
                     مصباحُ القواعد
-                    <span className="text-xs bg-[#d4a373] text-[#2c1810] px-3 py-1 rounded-full font-mono font-bold self-center">v1.2</span>
                   </h1>
                   <div className="h-1 w-32 bg-[#d4a373] mx-auto lg:mr-0 lg:ml-auto rounded-full"></div>
                 </div>
@@ -378,7 +416,7 @@ export default function App() {
             >
               <div className="text-center">
                 <h3 className="text-[#d4a373] font-bold text-lg mb-1">{labels.anaLang}</h3>
-                <p className="text-[#a89078] text-xs">{language}</p>
+                <p className="text-[#a89078] text-xs">{languageMap[language] || language}</p>
               </div>
               <button 
                 onClick={() => setIsLangModalOpen(true)}
@@ -535,6 +573,7 @@ export default function App() {
           <p className="text-xs opacity-60">© {new Date().getFullYear()} مصباحُ القواعد - تمام حقوق محفوظ ہیں</p>
         </div>
       </footer>
+
       {/* History Modal */}
       <AnimatePresence>
         {isHistoryOpen && (
@@ -601,7 +640,7 @@ export default function App() {
                         <p className="text-lg font-serif mb-3 line-clamp-2" dir="rtl">{item.text}</p>
                         <div className="flex items-center justify-between">
                           <span className="text-xs bg-[#f8f5f0] px-2 py-1 rounded-md text-[#d4a373] font-bold">
-                            {item.language}
+                            {languageMap[item.language] || item.language}
                           </span>
                           <button 
                             onClick={() => loadFromHistory(item)}
@@ -672,7 +711,7 @@ export default function App() {
                             : "bg-white border-[#e0d5c1] text-[#a89078] hover:border-[#d4a373]"
                         )}
                       >
-                        {lang}
+                        {languageMap[lang] || lang}
                       </button>
                     ))}
                   </div>
@@ -699,7 +738,7 @@ export default function App() {
                             : "bg-white border-[#e0d5c1] text-[#a89078] hover:border-[#bc8a5f]"
                         )}
                       >
-                        {lang}
+                        {languageMap[lang] || lang}
                       </button>
                     ))}
                   </div>
