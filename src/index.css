@@ -4,89 +4,61 @@
 @theme {
   --font-sans: "Inter", "Noto Nastaliq Urdu", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Noto Naskh Arabic", serif;
-  --color-gold: #d4a373;
-  --color-gold-dark: #bc8a5f;
-  --color-paper: #f8f5f0;
-  --color-ink: #2c1810;
+  --font-urdu: "Noto Nastaliq Urdu", serif;
 }
 
 @layer base {
   body {
-    @apply antialiased bg-[var(--color-paper)];
-    background-image: url("https://www.transparenttextures.com/patterns/paper-fibers.png");
+    @apply bg-[#2c1810] text-[#f8f5f0] selection:bg-[#d4a373] selection:text-white antialiased;
+    background-image: radial-gradient(circle at 50% -20%, #4a3728 0%, #2c1810 100%);
   }
 }
 
-.manuscript-frame {
+.urdu-title {
+  font-family: "Noto Nastaliq Urdu", serif;
+  line-height: 2;
+}
+
+.stylish-heading {
   position: relative;
-  border: 2px solid var(--color-gold);
-  padding: 2px;
-  background: white;
+  display: inline-block;
 }
 
-.manuscript-frame::before {
+.stylish-heading::before, .stylish-heading::after {
   content: "";
   position: absolute;
-  inset: 4px;
-  border: 1px solid var(--color-gold-dark);
-  pointer-events: none;
+  top: 50%;
+  width: 40px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #d4a373);
 }
 
-.islamic-pattern {
-  background-image: url("https://www.transparenttextures.com/patterns/islamic-art.png");
-  opacity: 0.05;
+.stylish-heading::before {
+  right: -50px;
 }
 
-.gold-text {
-  @apply text-[#d4a373];
-  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
-}
-
-.manuscript-card {
-  @apply bg-white border-2 border-[#d4a373] shadow-2xl relative;
-  background-image: url("https://www.transparenttextures.com/patterns/paper-fibers.png");
-}
-
-.manuscript-card::after {
-  content: "";
-  position: absolute;
-  inset: 6px;
-  border: 1px solid rgba(212, 163, 115, 0.3);
-  pointer-events: none;
+.stylish-heading::after {
+  left: -50px;
+  transform: rotate(180deg);
 }
 
 .markdown-body {
-  @apply text-right leading-relaxed text-lg;
+  @apply font-serif leading-relaxed text-right;
 }
 
-.markdown-body h1 {
-  @apply text-3xl font-bold mt-10 mb-6 border-b-2 border-[#d4a373] pb-3 text-[#2c1810];
-}
-
-.markdown-body h2 {
-  @apply text-2xl font-bold mt-8 mb-4 border-b border-[#e0d5c1] pb-2 text-[#2c1810];
-}
-
-.markdown-body h3 {
-  @apply text-xl font-bold mt-6 mb-3 text-[#2c1810];
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  @apply font-bold text-[#b08968] mb-4 mt-6;
 }
 
 .markdown-body p {
-  @apply mb-5 text-[#4a3728];
+  @apply mb-4 text-lg;
 }
 
 .markdown-body ul, .markdown-body ol {
-  @apply mb-6 pr-8 list-disc space-y-2;
+  @apply mb-4 pr-6 list-disc list-inside;
 }
 
-.markdown-body li {
-  @apply text-[#4a3728];
+.markdown-body code {
+  @apply bg-white border border-[#e0d5c1] px-1.5 py-0.5 rounded text-[#7f5539] font-mono text-sm;
 }
 
-.markdown-body strong {
-  @apply text-[#2c1810] font-bold;
-}
-
-.markdown-body blockquote {
-  @apply border-r-4 border-[#d4a373] pr-4 py-2 my-6 bg-[#fdfbf7] italic;
-}
